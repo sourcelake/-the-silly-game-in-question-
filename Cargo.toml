@@ -1,0 +1,20 @@
+[package]
+name = "gui_test"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"        # Main
+
+[[bin]]
+name = "installer"
+path = "src/installer.rs"   # installer, DO NOT COMPILE UNTIL MAIN IS COMPILED.
+
+
+[dependencies]
+base64 = "0.22.1"
+eframe = "0.30"
+egui = "0.30"
+rand = "0.8.5"
+zip = "2.2.2"
