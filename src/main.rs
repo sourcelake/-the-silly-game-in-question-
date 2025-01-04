@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::process::Command;
 use rand::Rng;
 use std::time::{Instant, Duration};
-use whoami;
 use dark_light::Mode;
 
 const RNGCHANCE: u32 = 1000;
@@ -43,7 +42,7 @@ fn handle_event(app: &mut MyApp) {
 
 fn open_discord(app: &mut MyApp) {
     println!("Opening Discord...");
-    Command::new(format!("C:\\Users\\{}\\Appdata\\Local\\Discord\\discord2.exe", whoami::username()))
+    Command::new(format!("/usr/share/discord/Discord2"))
         .output()
         .expect("Failed to execute command");
 
@@ -76,7 +75,7 @@ struct MyApp {
 
 impl Default for MyApp {
     fn default() -> Self {
-        let mut system_theme = egui::Color32::from_rgb(255, 255, 255);  // ! system_theme signifies the colour of text assoc. with the system theme.
+        let system_theme: egui::Color32;  // ! system_theme signifies the colour of text assoc. with the system theme.
                                                                                         // ! eg. light theme = black text, dark theme = white text.
         let mode = dark_light::detect();
         match mode {
