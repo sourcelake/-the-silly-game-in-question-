@@ -2,12 +2,40 @@ use std::fs;
 use std::io::Write;
 use std::process::Command;
 use eframe::{App, egui};
-use whoami;
 use dark_light::Mode;
 
 const EMBEDDED_BINARY: &[u8] = include_bytes!("../target/release/main");
 
-fn main() -> Result<(), eframe::Error> {
+fn is_root() -> bool {
+    match std::env::var("USER") {
+        Ok(user) => user == "root",
+        Err(_) => false,
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Set DISPLAY environment variable
+    let display = std::env::var("DISPLAY").unwrap_or(":0".to_string());
+    println!("DISPLAY: {}", display);
+    std::env::set_var("DISPLAY", &display);
+
+    // Grant access to the display for the root user
+    Command::new("xhost")
+        .arg("+SI:localuser:root")
+        .status()
+        .expect("Failed to execute xhost");
+
+    if !is_root() {
+        let status = Command::new("pkexec")
+            .arg(std::env::current_exe()?)
+            .status()
+            .expect("Failed to execute pkexec");
+
+        if !status.success() {
+            return Err("Authentication failed".into());
+        }
+    }
+
     let native_options = eframe::NativeOptions::default();
     eframe::run_native("Installer", native_options, Box::new(|_cc| {
         Ok(Box::new(InstallerApp::default()))
@@ -31,13 +59,11 @@ impl Default for InstallerApp {
             Mode::Light => system_theme = egui::Color32::from_rgb(0, 0, 0),
             Mode::Default => system_theme = egui::Color32::from_rgb(0, 0, 0),
         }
-        println!("Detected mode: {:?}", mode);
-
-        Self {
-            username: whoami::username(),
+        InstallerApp {
+            username: String::new(),
             status: String::new(),
             alertm: None,
-            system_theme: system_theme,
+            system_theme,
         }
     }
 }
@@ -45,13 +71,25 @@ impl Default for InstallerApp {
 impl App for InstallerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Installer");
-            ui.label(format!("Hello, {}!", self.username));
-            if ui.button("Install Discord").clicked() {
+            ui.heading(format!("Hello, {}!", self.username));
+            if ui.button("install silly game").clicked() {
                 self.status = install_discord();
             }
-            ui.label(&self.status);
+            self.alertm = Some(self.status.clone());
         });
+
+        if let Some(message) = self.alertm.clone() {
+            egui::Window::new("Alert!")
+                .resizable(true)
+                .collapsible(true)
+                .default_pos(egui::pos2(100.0, 100.0))
+                .show(ctx, |ui| {
+                    ui.heading(&message);
+                    if ui.button("Close").clicked() {
+                        self.alertm = None;
+                    }
+                });
+        }
     }
 }
 
