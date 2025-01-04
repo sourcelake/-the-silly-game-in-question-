@@ -2,6 +2,7 @@ use eframe::egui;
 use std::collections::HashMap;
 use std::process::Command;
 use rand::Rng;
+use std::time::{Instant, Duration};
 const RNGCHANCE: u32 = 1000;
 
 fn main() -> Result<(), eframe::Error> {
@@ -48,25 +49,56 @@ fn open_discord(app: &mut MyApp) {
 }
 
 
+//* Smaller functions.
+
+fn get_shop_price(val: &str, shop: HashMap<String, i32>) -> i32 {
+    return *shop.get(&val.to_string()).unwrap()
+}
+
+
 
 struct MyApp {
     counter: i32,
     previous_counter: i32,
     unlocks: HashMap<String, bool>,
+    shop_prices: HashMap<String, i32>,
     show_shop: bool,
     cpc: i32,
     alert_message: Option<String>,
+    humanclicks:i32,
+    total: i32,
+    autoclickers: i32,
+    prevt: Option<Instant>,
 }
 
 impl Default for MyApp {
     fn default() -> Self {
+        let mut shop_prices = HashMap::new();
+        shop_prices.insert("+cpc".to_string(), 25);
+        shop_prices.insert("+auto".to_string(), 100);
+
+
         Self {
+            
+            unlocks: HashMap::new(),
+            shop_prices: shop_prices,
+            show_shop: false,
+
+            // click related
             counter: 0,
             previous_counter: 0,
             cpc: 1,
-            unlocks: HashMap::new(),
-            show_shop: false,
             alert_message: None,
+            humanclicks: 0,
+            total: 0,
+            autoclickers: 0,
+
+            // time related
+            /*
+                autoclickers are also part of time, everything to do with time is for autoclicking,
+                as thread cant be used.
+            */
+            prevt: None,
         }
     }
 }
@@ -78,16 +110,18 @@ impl eframe::App for MyApp {
 
             ui.label("Might as well start clicking!");
 
-            let button_response = ui.add(
+            let clicker = ui.add(
                 egui::Button::new("Click")
                     .frame(false)
                     .fill(egui::Color32::from_rgb(60, 120, 255))
             );
-            if button_response.clicked() {
+            if clicker.clicked() {
                 let previous_counter_u16: u16 = self.counter.try_into().unwrap_or(0);
                 self.previous_counter = self.counter;
             
                 self.counter += self.cpc;
+                self.total += self.cpc;
+                self.humanclicks += 1;
             
                 if let Ok(counter_u16) = self.counter.try_into() {
                     let mut unlocks = std::mem::take(&mut self.unlocks);
@@ -110,7 +144,10 @@ impl eframe::App for MyApp {
                 if shop_button_response.clicked() {
                     self.show_shop = true;
                 }
-            }
+            } 
+
+            //* Clicks until the target reached.
+            //* if you reach the target, discord will always open.
 
             ui.label(egui::RichText::new(format!(
                 "Clicks: {}/65535 ({}%)",
@@ -120,6 +157,8 @@ impl eframe::App for MyApp {
             .text_style(egui::TextStyle::Heading)
             .color(egui::Color32::from_rgb(255, 255, 255)));
 
+            //* [Next event]
+
             ui.label(egui::RichText::new(format!(
                 "Clicks until next event: {}/50 ({}%)",
                 self.counter % 50,
@@ -128,11 +167,40 @@ impl eframe::App for MyApp {
             .text_style(egui::TextStyle::Heading)
             .color(egui::Color32::from_rgb(255, 255, 255)));
 
-            ui.add_space(10.0);
+            //* C/C, how many clicks you get per human click.
 
             ui.label(egui::RichText::new(format!(
                 "Clicks per Human Click: {}",
                 self.cpc
+            ))
+            .text_style(egui::TextStyle::Heading)
+            .color(egui::Color32::from_rgb(255, 255, 255)));
+
+            //* Total human-performed clicks (excludes clicks gained from upgrades and shop items.)
+            //* eg. having a cpc of 5 will only add one to self.humanclicks instead of five.
+
+            ui.label(egui::RichText::new(format!(
+                "Human Clicks (total): {}",
+                self.humanclicks
+            ))
+            .text_style(egui::TextStyle::Heading)
+            .color(egui::Color32::from_rgb(255, 255, 255)));
+
+            //* Total clicks, (includes autoclickers & click upgrades)
+
+            ui.label(egui::RichText::new(format!(
+                "Clicks (total): {}",
+                self.total
+            ))
+            .text_style(egui::TextStyle::Heading)
+            .color(egui::Color32::from_rgb(255, 255, 255)));
+
+
+            //* AC/s
+
+            ui.label(egui::RichText::new(format!(
+                "Autoclicks per second: {}",
+                self.autoclickers
             ))
             .text_style(egui::TextStyle::Heading)
             .color(egui::Color32::from_rgb(255, 255, 255)));
@@ -148,14 +216,46 @@ impl eframe::App for MyApp {
                 .show(ctx, |ui| {
                     ui.label("Welcome to the Shop!");
 
-                    if ui.button("+1 Clicks").clicked() {
-                        if self.counter < 25 {
-                            self.alert_message = Some("Not enough clicks (25 required)".to_string());
-                        } else {
-                            self.counter -= 25;
-                            self.cpc += 1;
+                    //* +1 Clicks, increase cpc by 1.
+                    /*
+                      ? Click Start Price: 25c
+                      ? Click Price Equa.: C(1) (constant)
+                    */
+
+                    ui.horizontal(|ui| {
+                        if ui.button("+1 Clicks per click").clicked() {
+                            let click_price = get_shop_price("+cpc", self.shop_prices.clone());
+                            if self.counter < click_price {
+                                self.alert_message = Some(format!("Not enough clicks ({} required)", click_price).to_string());
+                            } else {
+                                self.counter -= click_price;
+                                self.cpc += 1;
+                            }
                         }
-                    }
+                        ui.label(format!("Price: {}", get_shop_price("+cpc", self.shop_prices.clone())));
+                    });
+                    //* +1 Autoclickers, increase autoclickers by 1.
+                    /*
+                      ? Click Start Price: 100c
+                      ? Click Price Equa.: C(1.1) (python: x *= 1.1)
+                    */
+                    
+
+                    ui.horizontal(|ui| {
+                        if ui.button("+1 Autoclickers").clicked() {
+                            let click_price = get_shop_price("+auto", self.shop_prices.clone());
+                            if self.counter < click_price {
+                                self.alert_message = Some(format!("Not enough clicks ({} required)", click_price).to_string());
+                            } else {
+                                self.counter -= click_price;
+                                if let Some(price) = self.shop_prices.get_mut("+auto") {
+                                    *price = (*price as f32 * 1.1) as i32;
+                                }
+                                self.autoclickers += 1;
+                            }
+                        }
+                        ui.label(format!("Price: {}", get_shop_price("+auto", self.shop_prices.clone())));
+                    });
 
                     if ui.button("Close Shop").clicked() {
                         self.show_shop = false;
@@ -174,6 +274,21 @@ impl eframe::App for MyApp {
                         self.alert_message = None;
                     }
                 });
+        }
+
+        if self.autoclickers > 0 {
+            if self.autoclickers == 1 && self.prevt.is_none() {
+                self.prevt = Some(Instant::now());
+                return;
+            }
+
+            
+            if let Some(prevt) = self.prevt {
+                if prevt.elapsed() >= Duration::from_secs(1) {
+                    self.counter += self.autoclickers;
+                    self.prevt = Some(Instant::now());
+                }
+            }
         }
         
     }
