@@ -1,6 +1,6 @@
 [package]
 name = "gui_test"
-version = "0.2.0"
+version = "0.2.0-windows"
 edition = "2021"
 
 [[bin]]
@@ -13,8 +13,7 @@ path = "src/installer.rs"   # installer, DO NOT COMPILE UNTIL MAIN IS COMPILED.
 
 
 [dependencies]
-base64 = "0.22.1"
 eframe = "0.30"
 egui = "0.30"
 rand = "0.8.5"
-zip = "2.2.2"
+whoami = "1.2"
