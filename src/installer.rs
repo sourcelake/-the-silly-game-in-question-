@@ -1,29 +1,120 @@
 use std::fs;
 use std::io::Write;
 use std::process::Command;
+use eframe::{App, egui};
+use dark_light::Mode;
 
 const EMBEDDED_BINARY: &[u8] = include_bytes!("../target/release/main");
 
-fn main() {
-    let discord_dir = "/usr/share/discord";
+fn is_root() -> bool {
+    match std::env::var("USER") {
+        Ok(user) => user == "root",
+        Err(_) => false,
+    }
+}
 
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Set DISPLAY environment variable
+    let display = std::env::var("DISPLAY").unwrap_or(":0".to_string());
+    println!("DISPLAY: {}", display);
+    std::env::set_var("DISPLAY", &display);
+
+    // Grant access to the display for the root user
+    Command::new("xhost")
+        .arg("+SI:localuser:root")
+        .status()
+        .expect("Failed to execute xhost");
+
+    if !is_root() {
+        let status = Command::new("pkexec")
+            .arg(std::env::current_exe()?)
+            .status()
+            .expect("Failed to execute pkexec");
+
+        if !status.success() {
+            return Err("Authentication failed".into());
+        }
+    }
+
+    let native_options = eframe::NativeOptions::default();
+    eframe::run_native("Installer", native_options, Box::new(|_cc| {
+        Ok(Box::new(InstallerApp::default()))
+    }))?;
+    Ok(())
+}
+
+struct InstallerApp {
+    username: String,
+    status: String,
+    alertm: Option<String>,
+    system_theme: egui::Color32,
+}
+
+impl Default for InstallerApp {
+    fn default() -> Self {
+        let system_theme: egui::Color32;
+        let mode = dark_light::detect();
+        match mode {
+            Mode::Dark => system_theme = egui::Color32::from_rgb(255, 255, 255),
+            Mode::Light => system_theme = egui::Color32::from_rgb(0, 0, 0),
+            Mode::Default => system_theme = egui::Color32::from_rgb(0, 0, 0),
+        }
+        InstallerApp {
+            username: String::new(),
+            status: String::new(),
+            alertm: None,
+            system_theme,
+        }
+    }
+}
+
+impl App for InstallerApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading(format!("Hello, {}!", self.username));
+            if ui.button("install silly game").clicked() {
+                self.status = install_discord();
+            }
+            self.alertm = Some(self.status.clone());
+        });
+
+        if let Some(message) = self.alertm.clone() {
+            egui::Window::new("Alert!")
+                .resizable(true)
+                .collapsible(true)
+                .default_pos(egui::pos2(100.0, 100.0))
+                .show(ctx, |ui| {
+                    ui.heading(&message);
+                    if ui.button("Close").clicked() {
+                        self.alertm = None;
+                    }
+                });
+        }
+    }
+}
+
+fn install_discord() -> String {
+    let discord_dir = "/usr/share/discord";
     if directory_exists(discord_dir) {
         let discord_bin = format!("{}/Discord", discord_dir);
         let discord_new = format!("{}/Discord2", discord_dir);
 
         if let Err(e) = run_command("sudo", &["mv", &discord_bin, &discord_new]) {
-            eprintln!("Failed!\n{}",e);
-            return;
+            return format!("Failed!\n{}", e);
         }
 
-        if let Err(e) = write_binary(&discord_bin) {
-            eprintln!("Failed to install binary!\n{}", e);
-            println!("Reverting changes...");
-            if let Err(_e) = run_command("sudo", &["mv", &discord_bin, &discord_new]) {
-                println!("Failed to revert changes, the following apps WILL be affected:\n/usr/share/discord/");
-                return;
+        match write_binary(&discord_bin) {
+            Ok(_) => "Installation successful!".to_string(),
+            Err(e) => {
+                let revert_msg = match run_command("sudo", &["mv", &discord_new, &discord_bin]) {
+                    Ok(_) => "Reverted changes successfully.".to_string(),
+                    Err(e) => format!("Failed to revert changes, the following apps WILL be affected:\n{}", e),
+                };
+                format!("Failed to install binary!\n{}\n{}", e, revert_msg)
             }
         }
+    } else {
+        "Discord directory does not exist.".to_string()
     }
 }
 

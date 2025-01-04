@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::process::Command;
 use rand::Rng;
 use std::time::{Instant, Duration};
+use dark_light::Mode;
+
 const RNGCHANCE: u32 = 1000;
 
 fn main() -> Result<(), eframe::Error> {
@@ -40,8 +42,7 @@ fn handle_event(app: &mut MyApp) {
 
 fn open_discord(app: &mut MyApp) {
     println!("Opening Discord...");
-    Command::new("/usr/share/discord/Discord2")
-        .arg("Hello world")
+    Command::new(format!("/usr/share/discord/Discord2"))
         .output()
         .expect("Failed to execute command");
 
@@ -69,14 +70,24 @@ struct MyApp {
     total: i32,
     autoclickers: i32,
     prevt: Option<Instant>,
+    system_theme: egui::Color32,
 }
 
 impl Default for MyApp {
     fn default() -> Self {
+        let system_theme: egui::Color32;  // ! system_theme signifies the colour of text assoc. with the system theme.
+                                                                                        // ! eg. light theme = black text, dark theme = white text.
+        let mode = dark_light::detect();
+        match mode {
+            Mode::Dark => system_theme = egui::Color32::from_rgb(255, 255, 255),
+            Mode::Light => system_theme = egui::Color32::from_rgb(0, 0, 0),
+            Mode::Default => system_theme = egui::Color32::from_rgb(0, 0, 0),
+        }
+        println!("Detected mode: {:?}", mode);
+
         let mut shop_prices = HashMap::new();
         shop_prices.insert("+cpc".to_string(), 25);
         shop_prices.insert("+auto".to_string(), 100);
-
 
         Self {
             
@@ -92,6 +103,9 @@ impl Default for MyApp {
             humanclicks: 0,
             total: 0,
             autoclickers: 0,
+
+            // GUI related
+            system_theme: system_theme,
 
             // time related
             /*
@@ -155,7 +169,7 @@ impl eframe::App for MyApp {
                 (self.counter as f32 / 65535.0 * 100.0) as f32
             ))
             .text_style(egui::TextStyle::Heading)
-            .color(egui::Color32::from_rgb(255, 255, 255)));
+            .color(self.system_theme));
 
             //* [Next event]
 
@@ -165,7 +179,7 @@ impl eframe::App for MyApp {
                 ((self.counter as f32 % 50.0) / 50.0 * 100.0) as f32
             ))
             .text_style(egui::TextStyle::Heading)
-            .color(egui::Color32::from_rgb(255, 255, 255)));
+            .color(self.system_theme));
 
             //* C/C, how many clicks you get per human click.
 
@@ -174,7 +188,7 @@ impl eframe::App for MyApp {
                 self.cpc
             ))
             .text_style(egui::TextStyle::Heading)
-            .color(egui::Color32::from_rgb(255, 255, 255)));
+            .color(self.system_theme));
 
             //* Total human-performed clicks (excludes clicks gained from upgrades and shop items.)
             //* eg. having a cpc of 5 will only add one to self.humanclicks instead of five.
@@ -184,7 +198,7 @@ impl eframe::App for MyApp {
                 self.humanclicks
             ))
             .text_style(egui::TextStyle::Heading)
-            .color(egui::Color32::from_rgb(255, 255, 255)));
+            .color(self.system_theme));
 
             //* Total clicks, (includes autoclickers & click upgrades)
 
@@ -193,7 +207,7 @@ impl eframe::App for MyApp {
                 self.total
             ))
             .text_style(egui::TextStyle::Heading)
-            .color(egui::Color32::from_rgb(255, 255, 255)));
+            .color(self.system_theme));
 
 
             //* AC/s
@@ -203,7 +217,7 @@ impl eframe::App for MyApp {
                 self.autoclickers
             ))
             .text_style(egui::TextStyle::Heading)
-            .color(egui::Color32::from_rgb(255, 255, 255)));
+            .color(self.system_theme));
 
             ui.add_space(10.0);
         });
