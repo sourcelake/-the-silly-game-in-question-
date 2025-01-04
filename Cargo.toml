@@ -1,6 +1,6 @@
 [package]
 name = "gui_test"
-version = "0.2.0-windows"
+version = "0.3.0-windows"
 edition = "2021"
 
 [[bin]]
