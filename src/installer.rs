@@ -3,12 +3,17 @@ use std::io::Write;
 use std::process::Command;
 use eframe::{App, egui};
 use whoami;
+use dirs;
+use regex::Regex;
+use dark_light::Mode;
 
-const EMBEDDED_BINARY: &[u8] = include_bytes!("../target/x86_64-pc-windows-gnu/release/main.exe"); ///! Change to /release/ when finished
+const EMBEDDED_BINARY: &[u8] = include_bytes!("../target/x86_64-pc-windows-gnu/release/main.exe");
 
 fn main() -> Result<(), eframe::Error> {
     let native_options = eframe::NativeOptions::default();
-    eframe::run_native("Installer", native_options, Box::new(|_cc| Ok(Box::new(InstallerApp::default()))))?;
+    eframe::run_native("Installer", native_options, Box::new(|_cc| {
+        Ok(Box::new(InstallerApp::default()))
+    }))?;
     Ok(())
 }
 
@@ -16,18 +21,29 @@ struct InstallerApp {
     username: String,
     status: String,
     alertm: Option<String>,
+    system_theme: egui::Color32,
 }
 
 impl Default for InstallerApp {
     fn default() -> Self {
+        let mut system_theme = egui::Color32::from_rgb(255, 255, 255);   // ! system_theme signifies the colour of text assoc. with the system theme.
+                                                                                        // ! eg. light theme = black text, dark theme = white text.
+        let mode = dark_light::detect();
+        match mode {
+            Mode::Dark => system_theme = egui::Color32::from_rgb(255, 255, 255),
+            Mode::Light => system_theme = egui::Color32::from_rgb(0, 0, 0),
+            Mode::Default => system_theme = egui::Color32::from_rgb(0, 0, 0),
+        }
+        println!("Detected mode: {:?}", mode);
+
         Self {
             username: whoami::username(),
             status: String::new(),
             alertm: None,
+            system_theme: system_theme,
         }
     }
 }
-
 
 impl App for InstallerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -35,17 +51,15 @@ impl App for InstallerApp {
             ui.heading("Discord Installer");
 
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(format!(
-                    "Detected username: "
-                ))
-                .text_style(egui::TextStyle::Heading)
-                .color(egui::Color32::from_rgb(255, 255, 255)));
+                ui.label(egui::RichText::new("Detected username: ")
+                    .text_style(egui::TextStyle::Heading)
+                    .color(self.system_theme));
                 ui.text_edit_singleline(&mut self.username);
             });
 
             if ui.button("Install").clicked() {
+                println!("Attempting install...");
                 self.status = install_discord(&self.username);
-                println!("{}", self.status);
                 self.alertm = Some(self.status.clone());
             }
 
@@ -72,32 +86,47 @@ fn install_discord(username: &str) -> String {
         return "A username is required!".to_string();
     }
 
-    let discord_dir = if cfg!(target_os = "windows") {
-        format!("C:\\Users\\{}\\Appdata\\Local\\Discord", username)
-    } else {
-        format!("/home/{}/.local/share/Discord", username)
-    };
+    let home_dir = dirs::home_dir().expect("Could not find home directory");
 
-    if directory_exists(&discord_dir) {
-        let discord_bin = format!("{}/Discord", discord_dir);
-        let discord_new = format!("{}/Discord2", discord_dir);
+    let re = Regex::new(r"app-.+").unwrap();
+    let dc_path = format!("{}\\AppData\\Local\\Discord\\", home_dir.display());
+    let mut discord_path = String::new();
 
-        if let Err(e) = run_command("mv", &[&discord_bin, &discord_new]) {
-            return format!("Failed!\n{}", e);
+    for entry in fs::read_dir(&dc_path).unwrap() {
+        let entry = entry.unwrap();
+        let file_name = entry.file_name();
+        let file_name_str = file_name.to_str().unwrap();
+
+        if re.is_match(file_name_str) {
+            discord_path = format!("{}{}", dc_path, file_name_str);
+            break;
         }
+    }
 
-        if let Err(e) = write_binary(&discord_bin) {
-            let revert_msg = if let Err(_e) = run_command("mv", &[&discord_new, &discord_bin]) {
-                format!("Failed to revert changes, the following apps WILL be affected:\n{}", discord_dir)
-            } else {
-                "Reverted changes successfully.".to_string()
+    if discord_path.is_empty() {
+        return "Discord installation directory not found!".to_string();
+    }
+    println!("Discord path: {}", discord_path);
+
+    let dc_path = discord_path; // Update dc_path to include the app-* directory
+
+    let discord_bin = format!("{}\\Discord.exe", dc_path);
+    let discord_new = format!("{}\\discord2.exe", dc_path);
+    println!("Attempting to install binary to: {}", discord_bin);
+    println!("Attempting to rename existing binary to: {}", discord_new);
+    if let Err(e) = fs::rename(&discord_bin, &discord_new) {
+        return format!("Failed to rename existing binary!\n{}", e);
+    }
+
+    match write_binary(&discord_bin) {
+        Ok(_) => "Installation successful!".to_string(),
+        Err(e) => {
+            let revert_msg = match fs::rename(&discord_new, &discord_bin) {
+                Ok(_) => "Reverted changes successfully.".to_string(),
+                Err(e) => format!("Failed to revert changes, the following apps WILL be affected:\n{}", e),
             };
-            return format!("Failed to install binary!\n{}\n{}", e, revert_msg);
+            format!("Failed to install binary!\n{}\n{}", e, revert_msg)
         }
-
-        return "Installation successful!".to_string()
-    } else {
-        "Discord not found!".to_string()
     }
 }
 
@@ -109,53 +138,17 @@ fn directory_exists(path: &str) -> bool {
 }
 
 fn write_binary(output_path: &str) -> std::io::Result<()> {
-    let mut child = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .arg("/C")
-            .arg("type")
-            .arg("nul")
-            .arg(">")
-            .arg(output_path)
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .expect("Critical Error.")
-    } else {
-        Command::new("sudo")
-            .arg("tee")
-            .arg(output_path)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .spawn()
-            .expect("Critical Error.")
-    };
+    let mut file = fs::File::create(output_path)?;
+    file.write_all(EMBEDDED_BINARY)?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(EMBEDDED_BINARY)?;
-    }
-
-    let status = child.wait()?;
-    if !status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to unpack binary!",
-        ));
-    }
-
-    let chmod_status = if cfg!(target_os = "windows") {
+    let chmod_status = 
         Command::new("cmd")
             .arg("/C")
             .arg("icacls")
             .arg(output_path)
             .arg("/grant")
             .arg("Everyone:F")
-            .status()?
-    } else {
-        Command::new("sudo")
-            .arg("chmod")
-            .arg("755")
-            .arg(output_path)
-            .status()?
-    };
+            .status()?;
 
     if !chmod_status.success() {
         return Err(std::io::Error::new(
@@ -168,25 +161,17 @@ fn write_binary(output_path: &str) -> std::io::Result<()> {
 }
 
 fn run_command(command: &str, args: &[&str]) -> std::io::Result<()> {
-    let status = if cfg!(target_os = "windows") {
-        Command::new("cmd")
+    let status = Command::new("cmd")
             .arg("/C")
             .arg(command)
             .args(args)
             .status()
-            .expect("Failed to execute command")
-    } else {
-        Command::new("sudo")
-            .arg(command)
-            .args(args)
-            .status()
-            .expect("Failed to execute command")
-    };
+            .expect("Failed to execute command");
 
     if !status.success() {
         Err(std::io::Error::new(
             std::io::ErrorKind::Other,
-            format!("{:?} failed with status: {}", args, status),
+            format!("Command `{}` with arguments {:?} failed with status: {}", command, args, status),
         ))
     } else {
         Ok(())
