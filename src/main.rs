@@ -75,8 +75,8 @@ struct MyApp {
 
 impl Default for MyApp {
     fn default() -> Self {
-        let system_theme: egui::Color32;  // ! system_theme signifies the colour of text assoc. with the system theme.
-                                                                                        // ! eg. light theme = black text, dark theme = white text.
+        let system_theme: egui::Color32;    // ! system_theme signifies the colour of text assoc. with the system theme.
+                                            // ! eg. light theme = black text, dark theme = white text.
         let mode = dark_light::detect();
         match mode {
             Mode::Dark => system_theme = egui::Color32::from_rgb(255, 255, 255),

@@ -3,6 +3,7 @@ use std::io::Write;
 use std::process::Command;
 use eframe::{App, egui};
 use dark_light::Mode;
+use whoami;
 
 const EMBEDDED_BINARY: &[u8] = include_bytes!("../target/release/main");
 
@@ -14,12 +15,10 @@ fn is_root() -> bool {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Set DISPLAY environment variable
     let display = std::env::var("DISPLAY").unwrap_or(":0".to_string());
     println!("DISPLAY: {}", display);
     std::env::set_var("DISPLAY", &display);
 
-    // Grant access to the display for the root user
     Command::new("xhost")
         .arg("+SI:localuser:root")
         .status()
@@ -52,15 +51,17 @@ struct InstallerApp {
 
 impl Default for InstallerApp {
     fn default() -> Self {
+        let username = whoami::username();
         let system_theme: egui::Color32;
         let mode = dark_light::detect();
+
         match mode {
             Mode::Dark => system_theme = egui::Color32::from_rgb(255, 255, 255),
             Mode::Light => system_theme = egui::Color32::from_rgb(0, 0, 0),
             Mode::Default => system_theme = egui::Color32::from_rgb(0, 0, 0),
         }
         InstallerApp {
-            username: String::new(),
+            username: username,
             status: String::new(),
             alertm: None,
             system_theme,
