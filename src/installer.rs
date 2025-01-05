@@ -15,6 +15,7 @@ fn is_root() -> bool {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+
     let display = std::env::var("DISPLAY").unwrap_or(":0".to_string());
     println!("DISPLAY: {}", display);
     std::env::set_var("DISPLAY", &display);
@@ -39,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eframe::run_native("Installer", native_options, Box::new(|_cc| {
         Ok(Box::new(InstallerApp::default()))
     }))?;
+    
     Ok(())
 }
 
@@ -73,10 +75,18 @@ impl App for InstallerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading(format!("Hello, {}!", self.username));
-            if ui.button("install silly game").clicked() {
-                self.status = install_discord();
+            if fs::metadata("/usr/share/discord/Discord2").is_ok() {
+                if ui.button("uninstall silly game").clicked() {
+                    self.status = undo_delete();
+                    self.alertm = Some(self.status.clone());
+                }
+            } else {
+                if ui.button("install silly game").clicked() {
+                    self.status = install_discord();
+                    self.alertm = Some(self.status.clone());
+                }
             }
-            self.alertm = Some(self.status.clone());
+            
         });
 
         if let Some(message) = self.alertm.clone() {
@@ -100,14 +110,14 @@ fn install_discord() -> String {
         let discord_bin = format!("{}/Discord", discord_dir);
         let discord_new = format!("{}/Discord2", discord_dir);
 
-        if let Err(e) = run_command("sudo", &["mv", &discord_bin, &discord_new]) {
+        if let Err(e) = mv_file(&discord_bin, &discord_new) {
             return format!("Failed!\n{}", e);
         }
 
         match write_binary(&discord_bin) {
             Ok(_) => "Installation successful!".to_string(),
             Err(e) => {
-                let revert_msg = match run_command("sudo", &["mv", &discord_new, &discord_bin]) {
+                let revert_msg = match mv_file(&discord_bin, &discord_new) {
                     Ok(_) => "Reverted changes successfully.".to_string(),
                     Err(e) => format!("Failed to revert changes, the following apps WILL be affected:\n{}", e),
                 };
@@ -117,6 +127,47 @@ fn install_discord() -> String {
     } else {
         "Discord directory does not exist.".to_string()
     }
+}
+
+fn undo_delete() -> String {
+    let discord_dir = "/usr/share/discord";
+    if directory_exists(discord_dir) {
+        let discord_bin = format!("{}/Discord2", discord_dir);
+        let discord_new = format!("{}/Discord", discord_dir);
+
+        if let Err(e) = Command::new("sudo")
+            .arg("rm")
+            .arg(format!("{}/Discord", discord_dir))
+            .status() {
+            return format!("Failed!\n{}", e);
+        }
+        if let Err(e) = mv_file(&discord_bin, &discord_new) {
+            return format!("Failed!\n{}", e);
+        } else {
+            return "Reverted changes successfully.".to_string();
+        }
+
+    } else {
+        return "Discord directory does not exist.".to_string()
+    }
+} 
+
+
+fn mv_file(src: &str, dest: &str) -> std::io::Result<()> {
+    let status = Command::new("sudo")
+        .arg("mv")
+        .arg(src)
+        .arg(dest)
+        .status()?;
+
+    if !status.success() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to move file!",
+        ));
+    }
+
+    Ok(())
 }
 
 fn directory_exists(path: &str) -> bool {
