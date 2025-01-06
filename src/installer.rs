@@ -15,7 +15,6 @@ fn is_root() -> bool {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     let display = std::env::var("DISPLAY").unwrap_or(":0".to_string());
     println!("DISPLAY: {}", display);
     std::env::set_var("DISPLAY", &display);
@@ -135,12 +134,12 @@ fn undo_delete() -> String {
         let discord_bin = format!("{}/Discord2", discord_dir);
         let discord_new = format!("{}/Discord", discord_dir);
 
-        if let Err(e) = Command::new("sudo")
+        /*if let Err(e) = Command::new("sudo")
             .arg("rm")
             .arg(format!("{}/Discord", discord_dir))
             .status() {
             return format!("Failed!\n{}", e);
-        }
+        }*/
         if let Err(e) = mv_file(&discord_bin, &discord_new) {
             return format!("Failed!\n{}", e);
         } else {
