@@ -4,8 +4,8 @@ use std::process::Command;
 use rand::Rng;
 use std::time::{Instant, Duration};
 use dark_light::Mode;
-
-const RNGCHANCE: u32 = 1000;
+static mut DISCORD_ENABLED: bool = true;
+const RNGCHANCE: u32 = 2;
 
 fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
@@ -36,17 +36,33 @@ fn handle_event(app: &mut MyApp) {
     let     open_discord_roll     = open_discord_rng_init.gen_range(1..RNGCHANCE);
     println!("Rolled: {}", open_discord_roll);
     if open_discord_roll == 1 {
-        open_discord(app);
+        let _ = open_discord(app);
     }
 }
 
-fn open_discord(app: &mut MyApp) {
+fn open_discord(app: &mut MyApp) -> Result<(), Box<dyn std::error::Error>> {
+    if unsafe { !DISCORD_ENABLED } {
+        return Ok(());
+    }
     println!("Opening Discord...");
-    Command::new(format!("/usr/share/discord/Discord2"))
-        .output()
-        .expect("Failed to execute command");
+    let tryopen = Command::new(format!("/usr/share/discord/Discord2"))
+        .output();
+
+    match tryopen {
+        Ok(_) => {
+            println!("Discord opened!");
+            app.alert_message = Some("Discord opened!".to_string());
+        },
+        Err(_) => {
+            eprintln!("failed, possible discord not found.");
+            eprintln!("will continue, i will disable discord.");
+            
+            unsafe { DISCORD_ENABLED = false };
+        } 
+    }
 
     app.alert_message = Some("Opening Discord...".to_string());
+    Ok(())
 }
 
 
@@ -75,8 +91,8 @@ struct MyApp {
 
 impl Default for MyApp {
     fn default() -> Self {
-        let system_theme: egui::Color32;  // ! system_theme signifies the colour of text assoc. with the system theme.
-                                                                                        // ! eg. light theme = black text, dark theme = white text.
+        let system_theme: egui::Color32;    // ! system_theme signifies the colour of text assoc. with the system theme.
+                                            // ! eg. light theme = black text, dark theme = white text.
         let mode = dark_light::detect();
         match mode {
             Mode::Dark => system_theme = egui::Color32::from_rgb(255, 255, 255),

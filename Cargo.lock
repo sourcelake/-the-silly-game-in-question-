@@ -1385,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "gui_test"
-version = "0.3.0-windows"
+version = "0.3.5"
 dependencies = [
  "dark-light",
  "dirs 3.0.2",
