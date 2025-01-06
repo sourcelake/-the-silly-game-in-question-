@@ -1,4 +1,7 @@
-# update notes v0.3.5
+# WARNING
+## installer may not work, windows has not been tested yet.
+
+# update notes v0.3.5-windows
 * added a delete option in the installer
 * stopped it from crashing when running main as standalone*<sup>1</sup>
 * yeah thats it.

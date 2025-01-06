@@ -1,11 +1,14 @@
+#![windows_subsystem = "windows"]
+use dark_light::Mode;
 use eframe::egui;
+use rand::Rng;
 use std::collections::HashMap;
 use std::process::Command;
-use rand::Rng;
-use std::time::{Instant, Duration};
-use dark_light::Mode;
+use std::time::{Duration, Instant};
+
 static mut DISCORD_ENABLED: bool = true;
 const RNGCHANCE: u32 = 2;
+const DISCORD_PATH: &str = "C:\\Users\\{}\\Appdata\\Local\\Discord\\discord2.exe";
 
 fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
@@ -15,7 +18,12 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
-fn click_handle(counter: u16, previous_counter: u16, unlocks: &mut HashMap<String, bool>, app: &mut MyApp) {
+fn click_handle(
+    counter: u16,
+    previous_counter: u16,
+    unlocks: &mut HashMap<String, bool>,
+    app: &mut MyApp,
+) {
     if counter >= 10 && !unlocks.contains_key("shop") {
         unlocks.insert("shop".to_string(), true);
         app.alert_message = Some("Shop unlocked!".to_string());
@@ -29,11 +37,9 @@ fn click_handle(counter: u16, previous_counter: u16, unlocks: &mut HashMap<Strin
     }
 }
 
-
-
 fn handle_event(app: &mut MyApp) {
     let mut open_discord_rng_init = rand::thread_rng();
-    let     open_discord_roll     = open_discord_rng_init.gen_range(1..RNGCHANCE);
+    let open_discord_roll = open_discord_rng_init.gen_range(1..RNGCHANCE);
     println!("Rolled: {}", open_discord_roll);
     if open_discord_roll == 1 {
         let _ = open_discord(app);
@@ -45,34 +51,30 @@ fn open_discord(app: &mut MyApp) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     println!("Opening Discord...");
-    let tryopen = Command::new(format!("/usr/share/discord/Discord2"))
-        .output();
+    let tryopen = Command::new(format!("{}", DISCORD_PATH)).output();
 
     match tryopen {
         Ok(_) => {
             println!("Discord opened!");
             app.alert_message = Some("Discord opened!".to_string());
-        },
+        }
         Err(_) => {
             eprintln!("failed, possible discord not found.");
             eprintln!("will continue, i will disable discord.");
-            
+
             unsafe { DISCORD_ENABLED = false };
-        } 
+        }
     }
 
     app.alert_message = Some("Opening Discord...".to_string());
     Ok(())
 }
 
-
 //* Smaller functions.
 
 fn get_shop_price(val: &str, shop: HashMap<String, i32>) -> i32 {
-    return *shop.get(&val.to_string()).unwrap()
+    return *shop.get(&val.to_string()).unwrap();
 }
-
-
 
 struct MyApp {
     counter: i32,
@@ -82,7 +84,7 @@ struct MyApp {
     show_shop: bool,
     cpc: i32,
     alert_message: Option<String>,
-    humanclicks:i32,
+    humanclicks: i32,
     total: i32,
     autoclickers: i32,
     prevt: Option<Instant>,
@@ -91,8 +93,8 @@ struct MyApp {
 
 impl Default for MyApp {
     fn default() -> Self {
-        let system_theme: egui::Color32;    // ! system_theme signifies the colour of text assoc. with the system theme.
-                                            // ! eg. light theme = black text, dark theme = white text.
+        let system_theme: egui::Color32; // ! system_theme signifies the colour of text assoc. with the system theme.
+                                         // ! eg. light theme = black text, dark theme = white text.
         let mode = dark_light::detect();
         match mode {
             Mode::Dark => system_theme = egui::Color32::from_rgb(255, 255, 255),
@@ -106,7 +108,6 @@ impl Default for MyApp {
         shop_prices.insert("+auto".to_string(), 100);
 
         Self {
-            
             unlocks: HashMap::new(),
             shop_prices: shop_prices,
             show_shop: false,
@@ -143,24 +144,24 @@ impl eframe::App for MyApp {
             let clicker = ui.add(
                 egui::Button::new("Click")
                     .frame(false)
-                    .fill(egui::Color32::from_rgb(60, 120, 255))
+                    .fill(egui::Color32::from_rgb(60, 120, 255)),
             );
             if clicker.clicked() {
                 let previous_counter_u16: u16 = self.counter.try_into().unwrap_or(0);
                 self.previous_counter = self.counter;
-            
+
                 self.counter += self.cpc;
                 self.total += self.cpc;
                 self.humanclicks += 1;
-            
+
                 if let Ok(counter_u16) = self.counter.try_into() {
                     let mut unlocks = std::mem::take(&mut self.unlocks);
-            
+
                     click_handle(counter_u16, previous_counter_u16, &mut unlocks, self);
-            
+
                     self.unlocks = unlocks;
                 } else {
-                    open_discord(self);
+                    let _ = open_discord(self);
                     self.counter = 0;
                 }
             }
@@ -169,71 +170,70 @@ impl eframe::App for MyApp {
                 let shop_button_response = ui.add(
                     egui::Button::new("Open Shop")
                         .frame(false)
-                        .fill(egui::Color32::from_rgb(255, 165, 0))
+                        .fill(egui::Color32::from_rgb(255, 165, 0)),
                 );
                 if shop_button_response.clicked() {
                     self.show_shop = true;
                 }
-            } 
+            }
 
             //* Clicks until the target reached.
             //* if you reach the target, discord will always open.
 
-            ui.label(egui::RichText::new(format!(
-                "Clicks: {}/65535 ({}%)",
-                self.counter,
-                (self.counter as f32 / 65535.0 * 100.0) as f32
-            ))
-            .text_style(egui::TextStyle::Heading)
-            .color(self.system_theme));
+            ui.label(
+                egui::RichText::new(format!(
+                    "Clicks: {}/65535 ({}%)",
+                    self.counter,
+                    (self.counter as f32 / 65535.0 * 100.0) as f32
+                ))
+                .text_style(egui::TextStyle::Heading)
+                .color(self.system_theme),
+            );
 
             //* [Next event]
 
-            ui.label(egui::RichText::new(format!(
-                "Clicks until next event: {}/50 ({}%)",
-                self.counter % 50,
-                ((self.counter as f32 % 50.0) / 50.0 * 100.0) as f32
-            ))
-            .text_style(egui::TextStyle::Heading)
-            .color(self.system_theme));
+            ui.label(
+                egui::RichText::new(format!(
+                    "Clicks until next event: {}/50 ({}%)",
+                    self.counter % 50,
+                    ((self.counter as f32 % 50.0) / 50.0 * 100.0) as f32
+                ))
+                .text_style(egui::TextStyle::Heading)
+                .color(self.system_theme),
+            );
 
             //* C/C, how many clicks you get per human click.
 
-            ui.label(egui::RichText::new(format!(
-                "Clicks per Human Click: {}",
-                self.cpc
-            ))
-            .text_style(egui::TextStyle::Heading)
-            .color(self.system_theme));
+            ui.label(
+                egui::RichText::new(format!("Clicks per Human Click: {}", self.cpc))
+                    .text_style(egui::TextStyle::Heading)
+                    .color(self.system_theme),
+            );
 
             //* Total human-performed clicks (excludes clicks gained from upgrades and shop items.)
             //* eg. having a cpc of 5 will only add one to self.humanclicks instead of five.
 
-            ui.label(egui::RichText::new(format!(
-                "Human Clicks (total): {}",
-                self.humanclicks
-            ))
-            .text_style(egui::TextStyle::Heading)
-            .color(self.system_theme));
+            ui.label(
+                egui::RichText::new(format!("Human Clicks (total): {}", self.humanclicks))
+                    .text_style(egui::TextStyle::Heading)
+                    .color(self.system_theme),
+            );
 
             //* Total clicks, (includes autoclickers & click upgrades)
 
-            ui.label(egui::RichText::new(format!(
-                "Clicks (total): {}",
-                self.total
-            ))
-            .text_style(egui::TextStyle::Heading)
-            .color(self.system_theme));
-
+            ui.label(
+                egui::RichText::new(format!("Clicks (total): {}", self.total))
+                    .text_style(egui::TextStyle::Heading)
+                    .color(self.system_theme),
+            );
 
             //* AC/s
 
-            ui.label(egui::RichText::new(format!(
-                "Autoclicks per second: {}",
-                self.autoclickers
-            ))
-            .text_style(egui::TextStyle::Heading)
-            .color(self.system_theme));
+            ui.label(
+                egui::RichText::new(format!("Autoclicks per second: {}", self.autoclickers))
+                    .text_style(egui::TextStyle::Heading)
+                    .color(self.system_theme),
+            );
 
             ui.add_space(10.0);
         });
@@ -256,26 +256,34 @@ impl eframe::App for MyApp {
                         if ui.button("+1 Clicks per click").clicked() {
                             let click_price = get_shop_price("+cpc", self.shop_prices.clone());
                             if self.counter < click_price {
-                                self.alert_message = Some(format!("Not enough clicks ({} required)", click_price).to_string());
+                                self.alert_message = Some(
+                                    format!("Not enough clicks ({} required)", click_price)
+                                        .to_string(),
+                                );
                             } else {
                                 self.counter -= click_price;
                                 self.cpc += 1;
                             }
                         }
-                        ui.label(format!("Price: {}", get_shop_price("+cpc", self.shop_prices.clone())));
+                        ui.label(format!(
+                            "Price: {}",
+                            get_shop_price("+cpc", self.shop_prices.clone())
+                        ));
                     });
                     //* +1 Autoclickers, increase autoclickers by 1.
                     /*
                       ? Click Start Price: 100c
                       ? Click Price Equa.: C(1.1) (python: x *= 1.1)
                     */
-                    
 
                     ui.horizontal(|ui| {
                         if ui.button("+1 Autoclickers").clicked() {
                             let click_price = get_shop_price("+auto", self.shop_prices.clone());
                             if self.counter < click_price {
-                                self.alert_message = Some(format!("Not enough clicks ({} required)", click_price).to_string());
+                                self.alert_message = Some(
+                                    format!("Not enough clicks ({} required)", click_price)
+                                        .to_string(),
+                                );
                             } else {
                                 self.counter -= click_price;
                                 if let Some(price) = self.shop_prices.get_mut("+auto") {
@@ -284,7 +292,10 @@ impl eframe::App for MyApp {
                                 self.autoclickers += 1;
                             }
                         }
-                        ui.label(format!("Price: {}", get_shop_price("+auto", self.shop_prices.clone())));
+                        ui.label(format!(
+                            "Price: {}",
+                            get_shop_price("+auto", self.shop_prices.clone())
+                        ));
                     });
 
                     if ui.button("Close Shop").clicked() {
@@ -312,7 +323,6 @@ impl eframe::App for MyApp {
                 return;
             }
 
-            
             if let Some(prevt) = self.prevt {
                 if prevt.elapsed() >= Duration::from_secs(1) {
                     self.counter += self.autoclickers;
@@ -320,7 +330,5 @@ impl eframe::App for MyApp {
                 }
             }
         }
-        
     }
-    
 }
