@@ -6,7 +6,7 @@ use dark_light::Mode;
 use whoami;
 use regex::Regex;
 
-const EMBEDDED_BINARY: &[u8] = include_bytes!("../target/release/main");
+const EMBEDDED_BINARY: &[u8] = include_bytes!("../target/x86_64-pc-windows-gnu/release/main.exe");
 
 fn is_root() -> bool {
     match std::env::var("USER") {
